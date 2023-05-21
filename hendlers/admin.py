@@ -18,9 +18,9 @@ from decorators import check_permission, log
 from keyboards import inline_cancel_keyboard, inline_save_notification_keyboard
 from parser_xlsx import write_from_xlsx_to_db, write_from_db_to_xlsx
 from classes import Notification, FSM_admin
-from hendlers.box import config, message_id_dict, notification_dict, cleaner
+from hendlers.box import config, message_id_dict, notification_dict
 from hendlers.box import admin_message_generator
-from hendlers.user import send_notifications
+from hendlers.box import send_notifications, cleaner
 
 
 # ==========================Хелп_админ==================================================

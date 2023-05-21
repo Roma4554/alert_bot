@@ -1,19 +1,19 @@
 import logging
-import datetime
 from datetime import date
 
 from aiogram import types
 from sqlite3 import IntegrityError
 from aiogram.dispatcher import FSMContext, Dispatcher
-from aiogram.utils.exceptions import BotBlocked
+
 
 
 import db
 from create_bot import bot
 from keyboards import inline_cancel_keyboard
 from classes import FSM_user
-from hendlers.box import config, message_id_dict, cleaner
+from hendlers.box import config, message_id_dict
 from hendlers.box import start_message_generator, admin_message_generator
+from hendlers.box import cleaner, send_notifications
 
 
 # ==========================Старт==================================================
@@ -141,23 +141,6 @@ async def notification(message: types.Message) -> None:
     user_id = message.from_user.id
     await send_notifications(current_date, user_id)
 
-
-async def send_notifications(current_date: datetime.date, user_id: int) -> None:
-    pattern_message = '[{data}]: {text}'
-    text_message = '!Внимание!'.center(35, '=')
-    notifications = db.get_notifications(current_date.strftime("%Y.%m.%d"), db.get_user_id(user_id).employee_id)
-    if len(notifications) == 0:
-        text_message = 'Нет уведомлений...'
-    else:
-        for notification in notifications:
-            time_delta = notification.date_to_datetime() - current_date
-            if time_delta.days in range(int(config['DEFAULT']['delta_days']) + 1):
-                text_message = '\n'.join([text_message, pattern_message.format(data=notification.convert_date(),
-                                                                               text=notification.notification)])
-    try:
-        await bot.send_message(user_id, text_message)
-    except BotBlocked as ex:
-        logging.error(f'{ex}: Пользователь заблокировал бота')
 
 
 def register_user_handlers(dp: Dispatcher) -> None:

@@ -1,8 +1,13 @@
+import datetime
+import logging
+
 from configobj import ConfigObj
 from aiogram import types
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher import FSMContext, Dispatcher
+from aiogram.utils.exceptions import BotBlocked
 
+import db
 from create_bot import bot
 
 config = ConfigObj('settings.ini')
@@ -47,6 +52,26 @@ async def cleaner(call: types.Message | types.CallbackQuery) -> None:
             message_id_dict[user_id].clear()
     except KeyError:
         pass
+
+
+
+# ==========================Рассылка оповещения=================================================
+async def send_notifications(current_date: datetime.date, user_id: int) -> None:
+    pattern_message = '[{data}]: {text}'
+    text_message = '!Внимание!'.center(35, '=')
+    notifications = db.get_notifications(current_date.strftime("%Y.%m.%d"), db.get_user_id(user_id).employee_id)
+    if len(notifications) == 0:
+        text_message = 'Нет уведомлений...'
+    else:
+        for notification in notifications:
+            time_delta = notification.date_to_datetime() - current_date
+            if time_delta.days in range(int(config['DEFAULT']['delta_days']) + 1):
+                text_message = '\n'.join([text_message, pattern_message.format(data=notification.convert_date(),
+                                                                               text=notification.notification)])
+    try:
+        await bot.send_message(user_id, text_message)
+    except BotBlocked as ex:
+        logging.error(f'{ex}: Пользователь заблокировал бота')
 
 
 #==========================Функция для генерации привественного сообщения============================
