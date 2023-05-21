@@ -3,7 +3,10 @@ from typing import Optional, Union
 from datetime import datetime, date
 from collections.abc import Iterable, Iterator
 
-from box import config
+from configobj import ConfigObj
+
+
+config = ConfigObj('settings.ini')
 
 
 class Notification:

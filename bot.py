@@ -8,7 +8,7 @@ from db import sql_start, close_base
 from create_bot import dp, bot
 from hendlers.user import register_user_handlers
 from hendlers.admin import register_admin_handlers
-from box import register_handlers
+from hendlers.box import register_handlers
 
 
 logging.basicConfig(level=logging.INFO,

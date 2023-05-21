@@ -12,8 +12,8 @@ import db
 from create_bot import bot
 from keyboards import inline_cancel_keyboard
 from classes import FSM_user
-from box import config, message_id_dict, cleaner
-from box import start_message_generator, admin_message_generator
+from hendlers.box import config, message_id_dict, cleaner
+from hendlers.box import start_message_generator, admin_message_generator
 
 
 # ==========================Старт==================================================
