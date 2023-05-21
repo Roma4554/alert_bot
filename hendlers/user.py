@@ -5,7 +5,6 @@ from datetime import date
 from aiogram import types
 from sqlite3 import IntegrityError
 from aiogram.dispatcher import FSMContext, Dispatcher
-from aiogram.dispatcher.filters import Text
 from aiogram.utils.exceptions import BotBlocked
 
 
@@ -134,7 +133,6 @@ async def set_admin(message: types.Message, state: FSMContext) -> None:
 
 
 # ==========================Запрос оповещения==================================================
-
 async def notification(message: types.Message) -> None:
     """
     Хендлер для получения уведомлений из БД
@@ -162,24 +160,9 @@ async def send_notifications(current_date: datetime.date, user_id: int) -> None:
         logging.error(f'{ex}: Пользователь заблокировал бота')
 
 
-# ==========================Отмена (инлайн кнопка)==================================================
-async def cancel_call(callback: types.CallbackQuery, state: FSMContext) -> None:
-    """
-    Хенделер срабатывающий на нажатие инлайн кнопки "отмена". Прерывает работу машины состояний
-    """
-    cur_state = await state.get_state()
-    if cur_state is None:
-        return
-    await state.finish()
-    await cleaner(callback)
-    await callback.message.reply('Команда отменена')
-    await callback.answer()
-
-
 def register_user_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(start, commands=['start'])
     dp.register_message_handler(help_user, commands=['help'])
-    dp.register_callback_query_handler(cancel_call, Text(equals='cancel'), state='*')
     dp.register_message_handler(get_employee_id, commands=['change_id'])
     dp.register_message_handler(set_employee_id, state=FSM_user.get_employee_id_state)
     dp.register_message_handler(get_full_name, commands=['change_name'])
