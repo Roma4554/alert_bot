@@ -103,13 +103,24 @@ def get_user_id(user_id: int) -> User:
 #                        ).fetchone()[0] == 1
 
 
-def get_admin_list() -> User:
+# def get_admin_list() -> User:
+#     """
+#     Функция генератор возвращающая список администраторов
+#     """
+#     for user in cur.execute('SELECT * FROM user_info WHERE is_admin=1'):
+#         yield User(*user)
+
+
+def get_user_list(only_admin = False) -> User:
     """
     Функция генератор возвращающая список администраторов
     """
-    for user in cur.execute('SELECT * FROM user_info WHERE is_admin=1'):
-        yield User(*user)
-
+    if only_admin:
+        for user in cur.execute('SELECT * FROM user_info WHERE is_admin=1'):
+            yield User(*user)
+    else:
+        for user in cur.execute('SELECT * FROM user_info'):
+            yield User(*user)
 
 def get_employee_id_dict() -> dict[int, int]:
     """

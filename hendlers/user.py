@@ -5,8 +5,6 @@ from aiogram import types
 from sqlite3 import IntegrityError
 from aiogram.dispatcher import FSMContext, Dispatcher
 
-
-
 import db
 from create_bot import bot
 from keyboards import inline_cancel_keyboard
@@ -24,6 +22,7 @@ async def start(message: types.Message, state: FSMContext) -> None:
     try:
         db.add_user(message)
         logging.info(f'Пользователь {message.from_user.full_name} успешно добавлен в базу данных')
+        message_id_dict[message.from_user.id] = list()
     except IntegrityError:
         logging.error(f'Пользователь {message.from_user.full_name} уже есть в базе данных')
 
@@ -49,7 +48,6 @@ async def get_employee_id(message: types.Message, state: FSMContext) -> None:
     Хендлер для замены табельного номера
     """
     await message.answer('Введите табельный номер:', reply_markup=inline_cancel_keyboard)
-
     await state.set_state(FSM_user.get_employee_id_state.state)
 
 
@@ -57,20 +55,17 @@ async def set_employee_id(message: types.Message, state: FSMContext) -> None:
     """
     Хенделер сохраняющий табельный номер пользователя
     """
-    if message.from_user.id not in message_id_dict.keys():
-        message_id_dict[message.from_user.id] = list()
-
-    message_id_dict[message.from_user.id].append(message.message_id)
 
     if message.text.isdigit() and len(message.text) == int(config['DEFAULT']['len_employee_id']):
         db.update_employee_id(message.text, message.from_user.id)
         await message.reply(f'Табельный номер {message.text} сохранен!')
+        message_id_dict[message.from_user.id].append(message.message_id)
         await cleaner(message)
         await state.finish()
 
     else:
         echo = await message.reply('Табельный номер введен неверно.\nПопробуйте еще раз!')
-        message_id_dict[message.from_user.id].append(echo.message_id)
+        message_id_dict[message.from_user.id].extend([echo.message_id, message.message_id])
 
 
 # ==========================Изменение ФИО==================================================
@@ -86,9 +81,6 @@ async def set_full_name(message: types.Message, state: FSMContext) -> None:
     """
     Хенделер сохраняющий табельный номер пользователя
     """
-    if message.from_user.id not in message_id_dict.keys():
-        message_id_dict[message.from_user.id] = list()
-
     message_id_dict[message.from_user.id].append(message.message_id)
 
     full_name = message.text.split()
@@ -116,9 +108,6 @@ async def set_admin(message: types.Message, state: FSMContext) -> None:
     """
     Хенделер сохраняющий статус администратора при правильном вводе пароля
     """
-    if message.from_user.id not in message_id_dict.keys():
-        message_id_dict[message.from_user.id] = list()
-
     if message.text == config['topsecret']['admin_password']:
         db.add_admin(message.from_user.id)
         await message.answer(admin_message_generator(),
@@ -142,7 +131,6 @@ async def notification(message: types.Message) -> None:
     await send_notifications(current_date, user_id)
 
 
-
 def register_user_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(start, commands=['start'])
     dp.register_message_handler(help_user, commands=['help'])
@@ -153,4 +141,3 @@ def register_user_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(get_admin, commands=['get_admin'])
     dp.register_message_handler(set_admin, state=FSM_user.get_admin_state)
     dp.register_message_handler(notification, commands=['notifications'])
-

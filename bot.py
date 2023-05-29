@@ -8,7 +8,7 @@ from db import sql_start, close_base
 from create_bot import dp, bot
 from hendlers.user import register_user_handlers
 from hendlers.admin import register_admin_handlers
-from hendlers.box import register_handlers
+from hendlers.box import register_handlers, create_message_id_list
 
 
 logging.basicConfig(level=logging.INFO,
@@ -32,6 +32,7 @@ async def set_commands(bot: Bot) -> None:
 async def on_startup(_) -> None:
     logging.info('Бот вышел в сеть')
     sql_start()
+    create_message_id_list()
     await set_commands(bot)
 
 

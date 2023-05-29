@@ -30,7 +30,7 @@ async def cancel_call(callback: types.CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-#==========================Функция для удаления сообщений из списка============================
+# ==========================Функция для удаления сообщений из списка============================
 async def cleaner(call: types.Message | types.CallbackQuery) -> None:
     """
     Асинхронная функция удаляющая сообщения в сохраненном списке словаря message_id_dict и отчищающая список
@@ -54,6 +54,11 @@ async def cleaner(call: types.Message | types.CallbackQuery) -> None:
         pass
 
 
+# ===========================Создание списков для сохранения id сообщений ======================
+def create_message_id_list() -> None:
+    for user in db.get_user_list():
+        message_id_dict[user.user_id] = []
+
 
 # ==========================Рассылка оповещения=================================================
 async def send_notifications(current_date: datetime.date, user_id: int) -> None:
@@ -74,9 +79,8 @@ async def send_notifications(current_date: datetime.date, user_id: int) -> None:
         logging.error(f'{ex}: Пользователь заблокировал бота')
 
 
-#==========================Функция для генерации привественного сообщения============================
+# ==========================Функция для генерации привественного сообщения============================
 def start_message_generator(name: str, start: bool = True) -> str:
-
     helper_user_message = {
         '/help': 'вызвать сообщение с подсказками команд',
         '/change_id': 'изменить табельный номер',
@@ -97,7 +101,7 @@ def start_message_generator(name: str, start: bool = True) -> str:
     return text_message
 
 
-#==========================Функция для генерации сообщения help_admin============================
+# ==========================Функция для генерации сообщения help_admin============================
 def admin_message_generator() -> str:
     helper_admin_message = {
         '/help_admin': 'вызвать сообщение с подсказками',
@@ -118,7 +122,6 @@ def admin_message_generator() -> str:
         text_message = '\n'.join([text_message, f'{command} - {description}'])
 
     return text_message
-
 
 
 def register_handlers(dp: Dispatcher) -> None:

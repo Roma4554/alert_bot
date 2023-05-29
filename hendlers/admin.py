@@ -87,9 +87,12 @@ async def set_notification_time(message: types.Message, state: FSMContext) -> No
         config.write()
         await message.reply('Время оповещения успешно изменено на {time}!'
                             .format(time=new_time))
+        message_id_dict[message.from_user.id].append(message.message_id)
+        await cleaner(message)
         await state.finish()
     else:
-        await message.reply('Некорректный формат времени.\nПопробуйте еще раз!')
+        echo = await message.reply('Некорректный формат времени.\nПопробуйте еще раз!')
+        message_id_dict[message.from_user.id].extend([echo.message_id, message.message_id])
 
 
 # ==========================Забрать права администратора==================================================
@@ -139,20 +142,17 @@ async def set_new_password(message: types.Message, state: FSMContext) -> None:
     Хенделер сохраняющий новый пароль для получения прав администратора
     """
     pattern = r'^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?!.*[\s#`~"\'\.\+\-\\\/\*$%№@;:^&\*\=]).*$'
-    if message.from_user.id not in message_id_dict:
-        message_id_dict[message.from_user.id] = list()
-
     if search(pattern, message.text):
         config['topsecret']['admin_password'] = message.text
         config.write()
-        echo = await message.answer('Пароль успешно изменен!')
+        await message.answer('Пароль успешно изменен!')
+        message_id_dict[message.from_user.id].append(message.message_id)
         await state.finish()
         await cleaner(message)
     else:
         echo = await message.reply('Некорректный пароль.\
                                     \nПароль должен содержать строчные и прописные латинские буквы, цифры!')
-
-    message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
+        message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
 
 # ==========================Список администраторов==================================================
 @check_permission
@@ -162,7 +162,7 @@ async def get_admin_list(message: types.Message) -> None:
     """
     pattern = '{num}) {user}; Табельный номер: {employee_id}.'
     text_message = "Список администраторов:"
-    for num, admin in enumerate(db.get_admin_list(), start=1):
+    for num, admin in enumerate(db.get_user_list(only_admin=True), start=1):
         text_message = '\n'.join([text_message, pattern.format(num=num,
                                                                user=admin.name,
                                                                employee_id=admin.employee_id)])
@@ -176,7 +176,7 @@ async def add_notification(message: types.Message, state: FSMContext) -> None:
     Хендлер для добавления оповещения пользователя
     """
     echo = await message.reply('Введите табельный номер пользователя:', reply_markup=inline_cancel_keyboard)
-    message_id_dict[message.from_user.id] = [echo.message_id]
+    message_id_dict[message.from_user.id].append(echo.message_id)
 
     await state.set_state(FSM_admin.add_employee_id_state.state)
 
@@ -222,7 +222,7 @@ async def add_text(message: types.Message) -> None:
     text_message = '\n'.join([text_message, str(notification)])
     echo = await message.answer(text_message, reply_markup=inline_save_notification_keyboard)
     message_id_dict[message.from_user.id].append(message.message_id)
-    await cleaner()
+    await cleaner(message)
 
     message_id_dict[message.from_user.id].append(echo.message_id)
 
@@ -270,6 +270,7 @@ async def save_file(message: types.Message, state: FSMContext) -> None:
                 db.clean_table()
         write_from_xlsx_to_db(message.document.file_name)
         await message.reply('Данные успешно записаны в БД')
+        await cleaner(message)
         await state.finish()
         if path.isfile(pth):
             remove(pth)
@@ -278,7 +279,8 @@ async def save_file(message: types.Message, state: FSMContext) -> None:
 
 
 async def if_not_document(message: types.Message):
-    await message.reply('Пожалуйста отправьте файл exel!')
+    echo = await message.reply('Пожалуйста отправьте файл exel!')
+    message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
 
 
 # ==========================Загрузка данных в exel из БД==================================================
