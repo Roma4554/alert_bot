@@ -6,6 +6,8 @@ from re import search
 
 from aiogram import types
 from asyncio import sleep
+from asyncio import all_tasks, create_task
+import asyncio
 from aiogram.types import InputFile
 from aiogram.dispatcher import FSMContext
 from aiogram import Dispatcher
@@ -20,7 +22,11 @@ from parser_xlsx import write_from_xlsx_to_db, write_from_db_to_xlsx
 from classes import Notification, FSM_admin
 from hendlers.box import config, message_id_dict, notification_dict
 from hendlers.box import admin_message_generator
-from hendlers.box import send_notifications, cleaner
+from hendlers.box import auto_alert, cleaner, try_send_message
+
+time_pattern = r'([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
+date_pattern = r'^(?:0[1-9]|[12]\d|3[01])\.(?:0[1-9]|1[012])\.(?:[12]\d{3})$'
+password_pattern = r'^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?!.*[\s#`~"\'\.\+\-\\\/\*$%№@;:^&\*\=]).*$'
 
 
 # ==========================Хелп_админ==================================================
@@ -33,42 +39,10 @@ async def help_admin(message: types.Message) -> None:
                          parse_mode=types.ParseMode.HTML)
 
 
-# ==========================Рассылка оповещений==================================================
-@check_permission
-async def alert(message: types.Message) -> None:
-    """
-    Функция рассылки сообщений пользователям
-    """
-
-    logging.info('Включено оповещение пользователей')
-    await message.reply('Оповещение пользователей включено!')
-
-    while True:
-        id_dict = db.get_employee_id_dict()
-        current_date = date.today()
-
-        for employee_id in id_dict:
-            user_id = id_dict[employee_id]
-            await send_notifications(current_date, user_id)
-
-        current_datetime = datetime.now()
-        notification_time = time.fromisoformat(config['DEFAULT']['notification_time'])
-        notification_datetime = datetime.combine(current_date, notification_time)
-
-        if notification_datetime > current_datetime:
-            notification_datetime += timedelta(days=1)
-
-        delta_time = notification_datetime - current_datetime
-
-        logging.info(f'Следующее оповещение через {int(delta_time.seconds / 60)} мин.')
-
-        await sleep(delta_time.seconds)
-
-
 # ==========================Изменение времени рассылки оповещений==================================================
 @check_permission
 async def change_notification_time(message: types.Message, state: FSMContext) -> None:
-    await message.answer('Введите новое время оповещения в формате ЧЧ:ММ:CC или ЧЧ:ММ.',
+    await message.answer('Введите время оповещения в формате ЧЧ:ММ:CC или ЧЧ:ММ.',
                          reply_markup=inline_cancel_keyboard)
     await state.set_state(FSM_admin.get_new_notification_time.state)
 
@@ -77,8 +51,7 @@ async def set_notification_time(message: types.Message, state: FSMContext) -> No
     """
     Хенделер изменяющий время оповещения пользователя
     """
-    pattern = r'([01]\d|2[0-4]):[0-5]\d(:[0-5]\d)?$'
-    if search(pattern, message.text):
+    if search(time_pattern, message.text):
         if len(message.text.split(':')) == 2:
             new_time = ':'.join([message.text, '00'])
         else:
@@ -87,9 +60,16 @@ async def set_notification_time(message: types.Message, state: FSMContext) -> No
         config.write()
         await message.reply('Время оповещения успешно изменено на {time}!'
                             .format(time=new_time))
+
         message_id_dict[message.from_user.id].append(message.message_id)
         await cleaner(message)
         await state.finish()
+
+        for task in all_tasks():
+            if task.get_name() == 'Auto_alert':
+                task.cancel()
+                create_task(auto_alert(), name='Auto_alert')
+                break
     else:
         echo = await message.reply('Некорректный формат времени.\nПопробуйте еще раз!')
         message_id_dict[message.from_user.id].extend([echo.message_id, message.message_id])
@@ -141,8 +121,8 @@ async def set_new_password(message: types.Message, state: FSMContext) -> None:
     """
     Хенделер сохраняющий новый пароль для получения прав администратора
     """
-    pattern = r'^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?!.*[\s#`~"\'\.\+\-\\\/\*$%№@;:^&\*\=]).*$'
-    if search(pattern, message.text):
+
+    if search(password_pattern, message.text):
         config['topsecret']['admin_password'] = message.text
         config.write()
         await message.answer('Пароль успешно изменен!')
@@ -153,6 +133,7 @@ async def set_new_password(message: types.Message, state: FSMContext) -> None:
         echo = await message.reply('Некорректный пароль.\
                                     \nПароль должен содержать строчные и прописные латинские буквы, цифры!')
         message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
+
 
 # ==========================Список администраторов==================================================
 @check_permission
@@ -199,14 +180,12 @@ async def add_employee_id(message: types.Message, state: FSMContext) -> None:
 
 
 async def add_date(message: types.Message, state: FSMContext) -> None:
-    pattern = r'^(?:0[1-9]|[12]\d|3[01])\.(?:0[1-9]|1[012])\.(?:[12]\d{3})$'
-
-    if search(pattern, message.text):
+    if search(date_pattern, message.text):
         split_text = message.text.split('.')[::-1]
         date = '.'.join(split_text)
         notification_dict[message.from_user.id].date = date
         await state.set_state(FSM_admin.add_note_state.state)
-        echo = await message.reply('Введите текст уведомления:',  reply_markup=inline_cancel_keyboard)
+        echo = await message.reply('Введите текст уведомления:', reply_markup=inline_cancel_keyboard)
     else:
         echo = await message.reply('Некорректный формат даты! Попробуйте еще раз:')
 
@@ -251,7 +230,6 @@ async def set_file(message: types.Message, state: FSMContext) -> None:
     await state.set_state(FSM_admin.get_file_state.state)
 
 
-@log
 async def save_file(message: types.Message, state: FSMContext) -> None:
     """
     Хендлер позволяющий загрузить данные из exel в БД
@@ -301,10 +279,60 @@ async def get_file(message: types.Message) -> None:
         remove(pth)
 
 
+# ==========================Оповещение всех пользователей в назначенное время=======================
+async def all(message: types.Message, state: FSMContext) -> None:
+    """
+    Хендлер для добавления оповещения всех пользователей
+    """
+    await message.reply('Введите текст оповещения:', reply_markup=inline_cancel_keyboard)
+
+    await state.set_state(FSM_admin.add_notification_stated.state)
+
+
+async def get_time(message: types.Message, state: FSMContext) -> None:
+    """
+    Хендлер для добавления времени оповещения
+    """
+    notification_dict[message.from_user.id] = message.text
+    await message.answer('Введите время оповещения в формате ЧЧ:ММ:CC или ЧЧ:ММ.',
+                         reply_markup=inline_cancel_keyboard)
+    await state.set_state(FSM_admin.add_time_state.state)
+
+
+async def send_notification(message: types.Message, state: FSMContext) -> None:
+    if search(time_pattern, message.text):
+
+        time_notification = message.text
+        current_date = date.today()
+        current_datetime = datetime.now()
+        time_notification = time.fromisoformat(time_notification)
+        notification_datetime = datetime.combine(current_date, time_notification)
+
+        if notification_datetime > current_datetime:
+            notification_datetime += timedelta(days=1)
+
+        delta_time = notification_datetime - current_datetime
+
+        logging.info(f'Следующее оповещение через {int(delta_time.seconds / 60)} мин.')
+
+        await sleep(delta_time.seconds)
+
+        for user in db.get_user_list():
+            await try_send_message(user.user_id, notification_dict[message.from_user.id])
+
+
+# =========================================================================================
+async def loop_info(message: types.Message) -> None:
+    print("Выполняем loop")
+    tasks = asyncio.all_tasks()
+    for task in tasks:
+        print(task)
+    print('Текущая задача:', asyncio.current_task().get_name())
+
+
 # ================================================================================================
 def register_admin_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(help_admin, commands=['help_admin'])
-    dp.register_message_handler(alert, commands=['alert'])
     dp.register_message_handler(change_notification_time, commands=['change_time'])
     dp.register_message_handler(set_notification_time, state=FSM_admin.get_new_notification_time)
     dp.register_message_handler(fire_admin, commands=['fire_admin'])
@@ -322,3 +350,4 @@ def register_admin_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(add_date, state=FSM_admin.add_date_state)
     dp.register_message_handler(add_text, state=FSM_admin.add_note_state)
     dp.register_callback_query_handler(save_call, Text(equals='save'), state=FSM_admin.add_note_state)
+    dp.register_message_handler(loop_info, commands=['loop'])

@@ -2,6 +2,7 @@ import os.path as path
 
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, Border, Side, Alignment
+from datetime import datetime
 
 from classes.Notification import Notification
 from db import add_info_to_notification, get_notifications_generator
@@ -18,11 +19,12 @@ def write_from_xlsx_to_db(file_name: str) -> None:
 
     book = load_workbook(filename=pth, data_only=True)
     sheet = book.active
-
+    #FIX
     for row in sheet.iter_rows(min_row=2, values_only=True):
-        user_id, data, text = row
-        data = str(data.date()).replace('-', '.')
         if None not in row:
+            user_id, data, text = row
+            if isinstance(data, datetime):
+                data = str(data.date()).replace('-', '.')
             note = Notification(user_id, data, text)
             notifications_list.append(tuple(note))
 

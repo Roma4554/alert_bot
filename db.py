@@ -88,7 +88,7 @@ def get_user_employee_id(employee_id: int) -> User:
     return User(*cur.execute('SELECT * FROM user_info WHERE employee_id=?', (employee_id,)).fetchone())
 
 
-def get_user_id(user_id: int) -> User:
+def get_user_where_id(user_id: int) -> User:
     """
     Функция позволяющая получить экземпляр класса User по id
     """

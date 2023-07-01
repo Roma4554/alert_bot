@@ -3,9 +3,11 @@ import logging
 
 from configobj import ConfigObj
 from aiogram import types
+from asyncio import sleep, current_task
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher import FSMContext, Dispatcher
 from aiogram.utils.exceptions import BotBlocked
+from datetime import time, date, timedelta, datetime
 
 import db
 from create_bot import bot
@@ -56,27 +58,67 @@ async def cleaner(call: types.Message | types.CallbackQuery) -> None:
 
 # ===========================Создание списков для сохранения id сообщений ======================
 def create_message_id_list() -> None:
+    """
+    Функция создающая пустые списки для каждого пользователя в словаре message_id_dict
+    """
     for user in db.get_user_list():
         message_id_dict[user.user_id] = []
 
-
 # ==========================Рассылка оповещения=================================================
 async def send_notifications(current_date: datetime.date, user_id: int) -> None:
+    """
+    Асинхронная функция для формирования и отправки сообщения с оповещениями пользователю
+    """
     pattern_message = '[{data}]: {text}'
     text_message = '!Внимание!'.center(35, '=')
-    notifications = db.get_notifications(current_date.strftime("%Y.%m.%d"), db.get_user_id(user_id).employee_id)
-    if len(notifications) == 0:
-        text_message = 'Нет уведомлений...'
-    else:
+    notifications = db.get_notifications(current_date.strftime("%Y.%m.%d"), db.get_user_where_id(user_id).employee_id)
+    if notifications:
         for notification in notifications:
             time_delta = notification.date_to_datetime() - current_date
             if time_delta.days in range(int(config['DEFAULT']['delta_days']) + 1):
                 text_message = '\n'.join([text_message, pattern_message.format(data=notification.convert_date(),
                                                                                text=notification.notification)])
+    await try_send_message(user_id, text_message)
+
+async def try_send_message(user_id: int, text_message: str) -> None:
+    """
+    Асинхронная функция для отправки сообщения с оповещениями пользователю
+    """
     try:
         await bot.send_message(user_id, text_message)
     except BotBlocked as ex:
-        logging.error(f'{ex}: Пользователь заблокировал бота')
+        logging.error(f'{ex}: Бот заблокирован пользователем')
+
+async def auto_alert() -> None:
+    """
+    Функция рассылки сообщений пользователям
+    """
+    logging.info('Включено оповещение пользователей')
+    while True:
+        id_dict = db.get_employee_id_dict()
+        current_date = date.today()
+
+        current_datetime = datetime.now()
+        notification_time = time.fromisoformat(config['DEFAULT']['notification_time'])
+        notification_datetime = datetime.combine(current_date, notification_time)
+
+        if notification_datetime > current_datetime:
+            notification_datetime += timedelta(days=1)
+
+        delta_time = notification_datetime - current_datetime
+
+        logging.info(f'Следующее оповещение через {int(delta_time.seconds / 60)} мин.')
+
+        await sleep(delta_time.seconds)
+
+        if current_task().cancelled():
+            break
+        else:
+            for employee_id in id_dict:
+                user_id = id_dict[employee_id]
+                await send_notifications(current_date, user_id)
+
+            await sleep(5)
 
 
 # ==========================Функция для генерации привественного сообщения============================
@@ -105,7 +147,6 @@ def start_message_generator(name: str, start: bool = True) -> str:
 def admin_message_generator() -> str:
     helper_admin_message = {
         '/help_admin': 'вызвать сообщение с подсказками',
-        '/alert': 'включить рассылку уведомлений',
         '/change_time': 'изменить время рассылки',
         '/change_password': 'изменить пароль',
         '/admin_list': 'получить список администраторов',

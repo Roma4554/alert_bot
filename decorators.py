@@ -13,7 +13,7 @@ def check_permission(func: Callable) -> Callable:
     @functools.wraps(func)
     async def wrapped(message: types.Message, *args, **kwargs):
         try:
-            if db.get_user_id(message.from_user.id).is_admin:
+            if db.get_user_where_id(message.from_user.id).is_admin:
                 return await func(message, *args, **kwargs)
             else:
                 raise PermissionError(
