@@ -27,8 +27,8 @@ async def cancel_call(callback: types.CallbackQuery, state: FSMContext) -> None:
     if cur_state is None:
         return
     await state.finish()
-    await cleaner(callback)
     await callback.message.reply('Команда отменена')
+    await cleaner(callback)
     await callback.answer()
 
 
@@ -64,30 +64,36 @@ def create_message_id_list() -> None:
     for user in db.get_user_list():
         message_id_dict[user.user_id] = []
 
+
 # ==========================Рассылка оповещения=================================================
-async def send_notifications(current_date: datetime.date, user_id: int) -> None:
+async def send_notifications(current_date: datetime.date, user_id: int, employee_id: int) -> bool:
     """
     Асинхронная функция для формирования и отправки сообщения с оповещениями пользователю
     """
-    pattern_message = '[{data}]: {text}'
-    text_message = '!Внимание!'.center(35, '=')
-    notifications = db.get_notifications(current_date.strftime("%Y.%m.%d"), db.get_user_where_id(user_id).employee_id)
+    pattern_message = '▫[{data}]: {text}'
+    notifications = db.get_notifications(current_date.strftime("%Y.%m.%d"), employee_id)
     if notifications:
+        text_message = ('❗<b>Внимание</b>❗').center(39, '=')
         for notification in notifications:
             time_delta = notification.date_to_datetime() - current_date
             if time_delta.days in range(int(config['DEFAULT']['delta_days']) + 1):
                 text_message = '\n'.join([text_message, pattern_message.format(data=notification.convert_date(),
                                                                                text=notification.notification)])
-    await try_send_message(user_id, text_message)
+        await try_send_message(user_id, text_message)
+        return True
+    else:
+        return False
+
 
 async def try_send_message(user_id: int, text_message: str) -> None:
     """
     Асинхронная функция для отправки сообщения с оповещениями пользователю
     """
     try:
-        await bot.send_message(user_id, text_message)
+        await bot.send_message(user_id, text_message, parse_mode=types.ParseMode.HTML)
     except BotBlocked as ex:
-        logging.error(f'{ex}: Бот заблокирован пользователем')
+        logging.error(f'{ex}. User id: {user_id}')
+
 
 async def auto_alert() -> None:
     """
@@ -116,7 +122,7 @@ async def auto_alert() -> None:
         else:
             for employee_id in id_dict:
                 user_id = id_dict[employee_id]
-                await send_notifications(current_date, user_id)
+                await send_notifications(current_date, user_id, employee_id)
 
             await sleep(5)
 
@@ -130,9 +136,9 @@ def start_message_generator(name: str, start: bool = True) -> str:
         '/notifications': 'запросить уведомления',
     }
 
-    text_message = f'Привет, {name}!\
+    text_message = f'Привет, {name} 👋!\
                     \nЯ бот который будет напоминать тебе о сдаче необходимых экзаменов!\n\
-                    \nТы можешь управлять мной с помощью следующих команд:\n'
+                    \n⚙ Ты можешь управлять мной с помощью следующих команд:\n'
 
     for command, description in helper_user_message.items():
         text_message = '\n'.join([text_message, f'{command} - {description}'])
@@ -157,12 +163,37 @@ def admin_message_generator() -> str:
         '/get_db': 'получить весь список уведомлений из базы данных в виде xlsx таблицы',
     }
 
-    text_message = f'<b>Поздравляю, вам доступны команды администратора!</b>\n'
+    text_message = f'<b>Поздравляю, вам доступны команды администратора! 🔓</b>\n'
 
     for command, description in helper_admin_message.items():
         text_message = '\n'.join([text_message, f'{command} - {description}'])
 
     return text_message
+
+
+# ==========================Поиск employee_id по инициалам============================
+async def search_by_initials(message: types.Message) -> int:
+    """
+    Асинхронная функция для поиска табельного номера по инициалам пользователя
+    """
+    if not message.text.isdigit():
+
+        initial_dict = {user.get_initials().lower(): user.employee_id for user in db.get_user_list()}
+
+        text = message.text.strip().replace('. ', '.').lower()
+        text = text[:-1:] if text.endswith('.') else text
+
+        for initials in initial_dict:
+            if text == initials:
+                employee_id = initial_dict[text]
+                break
+        else:
+            echo = await message.reply('Данный пользователь отсутствует в базе!')
+            message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
+    else:
+        employee_id = message.text
+
+    return employee_id
 
 
 def register_handlers(dp: Dispatcher) -> None:

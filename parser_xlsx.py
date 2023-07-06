@@ -1,3 +1,4 @@
+import logging
 import os.path as path
 
 from openpyxl import load_workbook, Workbook
@@ -8,7 +9,7 @@ from classes.Notification import Notification
 from db import add_info_to_notification, get_notifications_generator
 
 
-def write_from_xlsx_to_db(file_name: str) -> None:
+def write_from_xlsx_to_db(file_name: str) -> str:
     """
     Функция для чтения exel файла и записи данных в БД
     :param file_name: file.xlsx
@@ -19,16 +20,29 @@ def write_from_xlsx_to_db(file_name: str) -> None:
 
     book = load_workbook(filename=pth, data_only=True)
     sheet = book.active
+    total_note = 0
     #FIX
-    for row in sheet.iter_rows(min_row=2, values_only=True):
+    for i_row, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), 2):
+        if row.count(None) == 3:
+            continue
+
+        total_note += 1
         if None not in row:
-            user_id, data, text = row
+            employee_id, data, text = row
             if isinstance(data, datetime):
                 data = str(data.date()).replace('-', '.')
-            note = Notification(user_id, data, text)
-            notifications_list.append(tuple(note))
+            try:
+                note = Notification(employee_id, data, text)
+                notifications_list.append(tuple(note))
+            except (TypeError, ValueError) as ex:
+                logging.error(f'Ошибка записи данных в строке {i_row}: {ex}.\n{row}')
+        else:
+            logging.error(f'Ошибка записи данных в строке {i_row}: Указаны не все данные.\n{row}')
 
     add_info_to_notification(notifications_list)
+    status = f'Запись данных завершена. В базу добавлено {len(notifications_list)} из {total_note} оповещений.'
+    logging.info(status)
+    return status
 
 
 def write_from_db_to_xlsx() -> None:

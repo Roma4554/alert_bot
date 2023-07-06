@@ -22,7 +22,7 @@ from parser_xlsx import write_from_xlsx_to_db, write_from_db_to_xlsx
 from classes import Notification, FSM_admin
 from hendlers.box import config, message_id_dict, notification_dict
 from hendlers.box import admin_message_generator
-from hendlers.box import auto_alert, cleaner, try_send_message
+from hendlers.box import auto_alert, cleaner, try_send_message, search_by_initials
 
 time_pattern = r'([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
 date_pattern = r'^(?:0[1-9]|[12]\d|3[01])\.(?:0[1-9]|1[012])\.(?:[12]\d{3})$'
@@ -42,7 +42,7 @@ async def help_admin(message: types.Message) -> None:
 # ==========================Изменение времени рассылки оповещений==================================================
 @check_permission
 async def change_notification_time(message: types.Message, state: FSMContext) -> None:
-    await message.answer('Введите время оповещения в формате ЧЧ:ММ:CC или ЧЧ:ММ.',
+    await message.answer('⏰ Введите время оповещения в формате ЧЧ:ММ или ЧЧ:ММ:CC.',
                          reply_markup=inline_cancel_keyboard)
     await state.set_state(FSM_admin.get_new_notification_time.state)
 
@@ -58,8 +58,8 @@ async def set_notification_time(message: types.Message, state: FSMContext) -> No
             new_time = message.text
         config['DEFAULT']['notification_time'] = new_time
         config.write()
-        await message.reply('Время оповещения успешно изменено на {time}!'
-                            .format(time=new_time))
+        await message.reply(f'✔ <b>Время оповещения</b> успешно изменено на <u>{message.text}</u>!',
+                            parse_mode=types.ParseMode.HTML)
 
         message_id_dict[message.from_user.id].append(message.message_id)
         await cleaner(message)
@@ -81,8 +81,9 @@ async def fire_admin(message: types.Message, state: FSMContext) -> None:
     """
     Хендлер позволяющий забрать права администратора у пользователя
     """
-    await message.answer('Введите табельный номер пользователя, у которого необходимо забрать права администратора!',
-                         reply_markup=inline_cancel_keyboard)
+    await message.answer('Введите <b>табельный номер</b> или <b>инициалы</b> пользователя, у которого необходимо забрать права администратора!',
+                         reply_markup=inline_cancel_keyboard,
+                         parse_mode=types.ParseMode.HTML)
     await state.set_state(FSM_admin.fire_admin_state.state)
 
 
@@ -90,10 +91,12 @@ async def set_fire_admin(message: types.Message, state: FSMContext) -> None:
     """
     Хенделер отзывающий права администратора
     """
+    employee_id = await search_by_initials(message)
     try:
-        if db.get_user_employee_id(message.text).is_admin:
-            db.fire_admin(message.text)
-            await message.answer('Права администратора отозваны!')
+        if db.get_user_by_employee_id(employee_id).is_admin:
+            db.fire_admin(employee_id)
+            await message.answer('✔ Права администратора отозваны!',
+                                 parse_mode=types.ParseMode.HTML)
         else:
             await message.reply('Пользователь не является администратором!')
 
@@ -110,9 +113,10 @@ async def change_password(message: types.Message, state: FSMContext) -> None:
     """
     Хендлер позволяющий изменить пароль администратора
     """
-    await message.answer('Введите новый пароль!\
+    await message.answer('🔑 <b>Введите новый пароль!</b>\
                          \nПароль должен содержать строчные и прописные латинские буквы, цифры',
-                         reply_markup=inline_cancel_keyboard)
+                         reply_markup=inline_cancel_keyboard,
+                         parse_mode=types.ParseMode.HTML)
 
     await state.set_state(FSM_admin.change_password_state.state)
 
@@ -125,7 +129,8 @@ async def set_new_password(message: types.Message, state: FSMContext) -> None:
     if search(password_pattern, message.text):
         config['topsecret']['admin_password'] = message.text
         config.write()
-        await message.answer('Пароль успешно изменен!')
+        await message.answer('✔ Пароль успешно изменен!',
+                             parse_mode=types.ParseMode.HTML)
         message_id_dict[message.from_user.id].append(message.message_id)
         await state.finish()
         await cleaner(message)
@@ -142,12 +147,13 @@ async def get_admin_list(message: types.Message) -> None:
     Хендлер предоставляющий список пользователей имеющих статус администратора
     """
     pattern = '{num}) {user}; Табельный номер: {employee_id}.'
-    text_message = "Список администраторов:"
+    text_message = "📜 <b>Список администраторов:</b>"
     for num, admin in enumerate(db.get_user_list(only_admin=True), start=1):
         text_message = '\n'.join([text_message, pattern.format(num=num,
                                                                user=admin.name,
                                                                employee_id=admin.employee_id)])
-    await message.reply(text_message)
+    await message.reply(text_message,
+                        parse_mode=types.ParseMode.HTML)
 
 
 # ==========================Загрузка данных в БД из telegram==================================================
@@ -156,8 +162,9 @@ async def add_notification(message: types.Message, state: FSMContext) -> None:
     """
     Хендлер для добавления оповещения пользователя
     """
-    echo = await message.reply('Введите табельный номер пользователя:', reply_markup=inline_cancel_keyboard)
-    message_id_dict[message.from_user.id].append(echo.message_id)
+    await message.reply('Введите <b>табельный номер</b> пользователя или его <b>инициалы</b> (Иванов И.И):',
+                        reply_markup=inline_cancel_keyboard,
+                        parse_mode=types.ParseMode.HTML)
 
     await state.set_state(FSM_admin.add_employee_id_state.state)
 
@@ -167,13 +174,18 @@ async def add_employee_id(message: types.Message, state: FSMContext) -> None:
     Хендлер сохраняющий табельный номер и запрашивающий дату оповещения:
     """
     notification_dict[message.from_user.id] = Notification()
+
+    employee_id = await search_by_initials(message)
+
     try:
-        notification_dict[message.from_user.id].employee_id = int(message.text)
+        notification_dict[message.from_user.id].employee_id = int(employee_id)
     except (TypeError, ValueError):
         echo = await message.reply(
             f"Табельный номер: {config['DEFAULT']['len_employee_id']}-значное целочисленное значение")
     else:
-        echo = await message.reply('Введите дату в формате ДД.ММ.ГГГГ:', reply_markup=inline_cancel_keyboard)
+        echo = await message.reply('📅 Введите дату в формате ДД.ММ.ГГГГ:',
+                                   reply_markup=inline_cancel_keyboard,
+                                   parse_mode=types.ParseMode.HTML)
         await state.set_state(FSM_admin.add_date_state.state)
     finally:
         message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
@@ -185,7 +197,9 @@ async def add_date(message: types.Message, state: FSMContext) -> None:
         date = '.'.join(split_text)
         notification_dict[message.from_user.id].date = date
         await state.set_state(FSM_admin.add_note_state.state)
-        echo = await message.reply('Введите текст уведомления:', reply_markup=inline_cancel_keyboard)
+        echo = await message.reply('📝 Введите текст уведомления:',
+                                   reply_markup=inline_cancel_keyboard,
+                                   parse_mode=types.ParseMode.HTML)
     else:
         echo = await message.reply('Некорректный формат даты! Попробуйте еще раз:')
 
@@ -197,9 +211,11 @@ async def add_text(message: types.Message) -> None:
     notification.notification = message.text
     text_message = 'Чтобы изменить текст, повторно отправьте сообщение!' \
                    'Для сохранения конечной версии, нажмите кнопку "Сохранить"\n' \
-                   '\nПредварительный просмотр:'
+                   '\n<b>Предварительный просмотр:</b>'
     text_message = '\n'.join([text_message, str(notification)])
-    echo = await message.answer(text_message, reply_markup=inline_save_notification_keyboard)
+    echo = await message.answer(text_message,
+                                reply_markup=inline_save_notification_keyboard,
+                                parse_mode=types.ParseMode.HTML)
     message_id_dict[message.from_user.id].append(message.message_id)
     await cleaner(message)
 
@@ -217,7 +233,8 @@ async def save_call(callback: types.CallbackQuery, state: FSMContext) -> None:
     await bot.edit_message_text(chat_id=callback.message.chat.id,
                                 message_id=message_id_dict[callback.from_user.id].pop(),
                                 text=text)
-    await callback.answer('Уведомление сохранено!')
+    await callback.answer('✔ <b>Уведомление сохранено!</b>',
+                          parse_mode=types.ParseMode.HTML)
 
 
 # ==========================Загрузка данных в БД из exel==================================================
@@ -246,8 +263,8 @@ async def save_file(message: types.Message, state: FSMContext) -> None:
         match message.caption:
             case str(message.caption) if message.caption.lower() == '*d':
                 db.clean_table()
-        write_from_xlsx_to_db(message.document.file_name)
-        await message.reply('Данные успешно записаны в БД')
+        status = write_from_xlsx_to_db(message.document.file_name)
+        await message.reply(status)
         await cleaner(message)
         await state.finish()
         if path.isfile(pth):
@@ -257,13 +274,12 @@ async def save_file(message: types.Message, state: FSMContext) -> None:
 
 
 async def if_not_document(message: types.Message):
-    echo = await message.reply('Пожалуйста отправьте файл exel!')
+    echo = await message.reply('Пожалуйста отправьте exel файл!')
     message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
 
 
 # ==========================Загрузка данных в exel из БД==================================================
 @check_permission
-@log
 async def get_file(message: types.Message) -> None:
     """
     Хендлер формирующий exel файл с данными из БД и отправляющий его пользователю

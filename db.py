@@ -1,4 +1,3 @@
-# import sqlite3
 from sqlite3 import connect
 import logging
 
@@ -36,8 +35,8 @@ def add_user(message: types.Message) -> None:
     """
     Функция добавляющая id пользователя в таблицу формирования запроса (table_request)
     """
-    cur.execute("INSERT INTO user_info(id, name, is_admin) VALUES(:id, :name, :is_admin)",
-                dict(id=message.from_user.id, name=message.from_user.full_name, is_admin=0))
+    cur.execute("INSERT INTO user_info(id, name, employee_id, is_admin) VALUES(:id, :name, :employee_id, :is_admin)",
+                dict(id=message.from_user.id, name=message.from_user.full_name, employee_id=0, is_admin=0))
     base.commit()
 
 
@@ -65,7 +64,7 @@ def add_info_to_notification(value: list[tuple[int, str, str]]) -> None:
     base.commit()
 
 
-def add_admin(user_id: str) -> None:
+def add_admin(user_id: int) -> None:
     """
     Функция добавляющая права администратора пользователю
     """
@@ -73,7 +72,7 @@ def add_admin(user_id: str) -> None:
     base.commit()
 
 
-def fire_admin(employee_id: str) -> None:
+def fire_admin(employee_id: int) -> None:
     """
     Функция добавляющая права администратора пользователю
     """
@@ -81,37 +80,21 @@ def fire_admin(employee_id: str) -> None:
     base.commit()
 
 
-def get_user_employee_id(employee_id: int) -> User:
+def get_user_by_employee_id(employee_id: int) -> User:
     """
     Функция позволяющая получить экземпляр класса User по табельному номеру
     """
     return User(*cur.execute('SELECT * FROM user_info WHERE employee_id=?', (employee_id,)).fetchone())
 
 
-def get_user_where_id(user_id: int) -> User:
+def get_user_by_id(user_id: int) -> User:
     """
     Функция позволяющая получить экземпляр класса User по id
     """
     return User(*cur.execute('SELECT * FROM user_info WHERE id=?', (user_id,)).fetchone())
 
 
-# def is_admin(user_id: int) -> bool:
-#     """
-#     Функция позволяющая получить информацию о правах пользователя
-#     """
-#     return cur.execute('SELECT is_admin FROM user_info WHERE id=?', (user_id,)
-#                        ).fetchone()[0] == 1
-
-
-# def get_admin_list() -> User:
-#     """
-#     Функция генератор возвращающая список администраторов
-#     """
-#     for user in cur.execute('SELECT * FROM user_info WHERE is_admin=1'):
-#         yield User(*user)
-
-
-def get_user_list(only_admin = False) -> User:
+def get_user_list(only_admin=False) -> User:
     """
     Функция генератор возвращающая список администраторов
     """
@@ -122,9 +105,10 @@ def get_user_list(only_admin = False) -> User:
         for user in cur.execute('SELECT * FROM user_info'):
             yield User(*user)
 
+
 def get_employee_id_dict() -> dict[int, int]:
     """
-    Функция возвращающая кортеж (id пользователя, табельный номер)
+    Функция возвращающая словарь (табельный номер: id пользователя)
     """
     return dict(cur.execute('SELECT employee_id, id FROM user_info').fetchall())
 
@@ -143,7 +127,7 @@ def get_notifications(date: str, employee_id: int) -> list[Notification]:
     """
     result = cur.execute('SELECT * FROM table_notification WHERE date>=? AND employee_id=? ORDER BY date',
                          (date, employee_id)).fetchall()
-    if len(result) != 0:
+    if result:
         return [Notification(*note) for note in result]
     else:
         return list()
