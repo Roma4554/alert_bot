@@ -12,17 +12,16 @@ from aiogram.types import InputFile
 from aiogram.dispatcher import FSMContext
 from aiogram import Dispatcher
 from aiogram.dispatcher.filters import Text
-from sqlite3 import OperationalError
 
 import db
 from create_bot import bot
 from decorators import check_permission, log
-from keyboards import inline_cancel_keyboard, inline_save_notification_keyboard
+from keyboards import inline_cancel_keyboard, inline_save_notification_keyboard, inline_next_keyboard
 from parser_xlsx import write_from_xlsx_to_db, write_from_db_to_xlsx
 from classes import Notification, FSM_admin
 from hendlers.box import config, message_id_dict, notification_dict
 from hendlers.box import admin_message_generator
-from hendlers.box import auto_alert, cleaner, try_send_message, search_by_initials
+from hendlers.box import auto_alert, cleaner, try_send_message, search_employee_id
 
 time_pattern = r'([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
 date_pattern = r'^(?:0[1-9]|[12]\d|3[01])\.(?:0[1-9]|1[012])\.(?:[12]\d{3})$'
@@ -81,9 +80,10 @@ async def fire_admin(message: types.Message, state: FSMContext) -> None:
     """
     Хендлер позволяющий забрать права администратора у пользователя
     """
-    await message.answer('Введите <b>табельный номер</b> или <b>инициалы</b> пользователя, у которого необходимо забрать права администратора!',
-                         reply_markup=inline_cancel_keyboard,
-                         parse_mode=types.ParseMode.HTML)
+    await message.answer(
+        'Введите <b>табельный номер</b> или <b>инициалы</b> пользователя, у которого необходимо забрать права администратора!',
+        reply_markup=inline_cancel_keyboard,
+        parse_mode=types.ParseMode.HTML)
     await state.set_state(FSM_admin.fire_admin_state.state)
 
 
@@ -91,8 +91,9 @@ async def set_fire_admin(message: types.Message, state: FSMContext) -> None:
     """
     Хенделер отзывающий права администратора
     """
-    employee_id = await search_by_initials(message)
     try:
+        employee_id = search_employee_id(message)
+
         if db.get_user_by_employee_id(employee_id).is_admin:
             db.fire_admin(employee_id)
             await message.answer('✔ Права администратора отозваны!',
@@ -100,11 +101,15 @@ async def set_fire_admin(message: types.Message, state: FSMContext) -> None:
         else:
             await message.reply('Пользователь не является администратором!')
 
-    except (TypeError, OperationalError):
-        await message.reply('Пользователь с таким табельным номером отсутствует!')
-
-    finally:
         await state.finish()
+        await cleaner(message)
+    except (KeyError, ValueError) as ex:
+        argument = ex.args
+        echo = await message.reply(*argument)
+        message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
+
+
+
 
 
 # ==========================Изменение пароля=========================================================
@@ -166,36 +171,45 @@ async def add_notification(message: types.Message, state: FSMContext) -> None:
                         reply_markup=inline_cancel_keyboard,
                         parse_mode=types.ParseMode.HTML)
 
+    notification_dict[message.from_user.id] = list()
     await state.set_state(FSM_admin.add_employee_id_state.state)
 
 
-async def add_employee_id(message: types.Message, state: FSMContext) -> None:
+async def add_employee_id(message: types.Message) -> None:
     """
     Хендлер сохраняющий табельный номер и запрашивающий дату оповещения:
     """
-    notification_dict[message.from_user.id] = Notification()
-
-    employee_id = await search_by_initials(message)
-
     try:
-        notification_dict[message.from_user.id].employee_id = int(employee_id)
-    except (TypeError, ValueError):
-        echo = await message.reply(
-            f"Табельный номер: {config['DEFAULT']['len_employee_id']}-значное целочисленное значение")
-    else:
-        echo = await message.reply('📅 Введите дату в формате ДД.ММ.ГГГГ:',
-                                   reply_markup=inline_cancel_keyboard,
+        employee_id = search_employee_id(message)
+        notification_dict[message.from_user.id].append(Notification())
+        notification_dict[message.from_user.id][-1].employee_id = int(employee_id)
+        echo = await message.reply('Добавьте еще пользователя или нажмите кнопку <b>"Продолжить"</b>',
+                                   reply_markup=inline_next_keyboard,
                                    parse_mode=types.ParseMode.HTML)
-        await state.set_state(FSM_admin.add_date_state.state)
+    except (KeyError, ValueError) as ex:
+        argument = ex.args
+        echo = await message.reply(*argument)
     finally:
         message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
+
+
+async def next_call(callback: types.CallbackQuery, state: FSMContext) -> None:
+    """
+    Хенделер срабатывающий на нажатие инлайн кнопки "Продолжить".
+    """
+    await state.set_state(FSM_admin.add_date_state.state)
+    echo = await callback.message.reply('📅 Введите дату в формате ДД.ММ.ГГГГ:',
+                                        reply_markup=inline_cancel_keyboard,
+                                        parse_mode=types.ParseMode.HTML)
+    message_id_dict[callback.from_user.id].append(echo.message_id)
 
 
 async def add_date(message: types.Message, state: FSMContext) -> None:
     if search(date_pattern, message.text):
         split_text = message.text.split('.')[::-1]
         date = '.'.join(split_text)
-        notification_dict[message.from_user.id].date = date
+        for user in notification_dict[message.from_user.id]:
+            user.date = date
         await state.set_state(FSM_admin.add_note_state.state)
         echo = await message.reply('📝 Введите текст уведомления:',
                                    reply_markup=inline_cancel_keyboard,
@@ -207,18 +221,18 @@ async def add_date(message: types.Message, state: FSMContext) -> None:
 
 
 async def add_text(message: types.Message) -> None:
-    notification = notification_dict[message.from_user.id]
-    notification.notification = message.text
+    notifications = notification_dict[message.from_user.id]
+    for notification in notifications:
+        notification.notification = message.text
     text_message = 'Чтобы изменить текст, повторно отправьте сообщение!' \
                    'Для сохранения конечной версии, нажмите кнопку "Сохранить"\n' \
                    '\n<b>Предварительный просмотр:</b>'
-    text_message = '\n'.join([text_message, str(notification)])
+    text_message = '\n'.join([text_message, str(notifications[0])])
+    message_id_dict[message.from_user.id].append(message.message_id)
+    await cleaner(message)
     echo = await message.answer(text_message,
                                 reply_markup=inline_save_notification_keyboard,
                                 parse_mode=types.ParseMode.HTML)
-    message_id_dict[message.from_user.id].append(message.message_id)
-    await cleaner(message)
-
     message_id_dict[message.from_user.id].append(echo.message_id)
 
 
@@ -228,13 +242,13 @@ async def save_call(callback: types.CallbackQuery, state: FSMContext) -> None:
     Хенделер срабатывающий на нажатие инлайн кнопки "сохранить".
     """
     await state.finish()
-    db.add_info_to_notification([tuple(notification_dict[callback.from_user.id])])
-    text = '\n'.join(['Уведомление сохранено!\n', str(notification_dict[callback.from_user.id])])
+    notifications = map(tuple, notification_dict[callback.from_user.id])
+    db.add_info_to_notification(notifications)
+    text = '\n'.join(['Уведомление сохранено!\n', str(notification_dict[callback.from_user.id][0])])
     await bot.edit_message_text(chat_id=callback.message.chat.id,
                                 message_id=message_id_dict[callback.from_user.id].pop(),
                                 text=text)
-    await callback.answer('✔ <b>Уведомление сохранено!</b>',
-                          parse_mode=types.ParseMode.HTML)
+    await callback.message.answer('✔ <b>Уведомления сохранены!</b>', parse_mode=types.ParseMode.HTML)
 
 
 # ==========================Загрузка данных в БД из exel==================================================
@@ -365,5 +379,6 @@ def register_admin_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(add_employee_id, state=FSM_admin.add_employee_id_state)
     dp.register_message_handler(add_date, state=FSM_admin.add_date_state)
     dp.register_message_handler(add_text, state=FSM_admin.add_note_state)
+    dp.register_callback_query_handler(next_call, Text(equals='next'), state=FSM_admin.add_employee_id_state.state)
     dp.register_callback_query_handler(save_call, Text(equals='save'), state=FSM_admin.add_note_state)
     dp.register_message_handler(loop_info, commands=['loop'])

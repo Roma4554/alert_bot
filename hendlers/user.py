@@ -27,9 +27,10 @@ async def start(message: types.Message, state: FSMContext) -> None:
         message_id_dict[message.from_user.id] = list()
     except IntegrityError:
         logging.error(f'Пользователь {message.from_user.full_name} уже есть в базе данных')
-
-    await message.answer(start_message_generator(message.from_user.first_name),
-                         parse_mode=types.ParseMode.HTML)
+        return
+    finally:
+        await message.answer(start_message_generator(message.from_user.first_name),
+                             parse_mode=types.ParseMode.HTML)
 
     await state.set_state(FSM_user.get_employee_id_state.state)
 
@@ -103,11 +104,11 @@ async def set_full_name(message: types.Message, state: FSMContext) -> None:
     Хенделер сохраняющий табельный номер пользователя
     """
     message_id_dict[message.from_user.id].append(message.message_id)
-
     full_name = message.text.split()
     if all(map(str.isalpha, full_name)) and len(full_name) == 3:
-        db.update_name(message.text, message.from_user.id)
-        await message.reply(f'✔ <b>ФИО:</b> <u>{message.text}</u> сохранено!',
+        full_name = ' '.join(map(str.capitalize, full_name))
+        db.update_name(full_name, message.from_user.id)
+        await message.reply(f'✔ <b>ФИО:</b> <u>{full_name}</u> сохранено!',
                             parse_mode=types.ParseMode.HTML)
         await cleaner(message)
         await state.finish()

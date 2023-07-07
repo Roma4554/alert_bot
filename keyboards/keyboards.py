@@ -8,4 +8,7 @@ inline_save_notification_keyboard = InlineKeyboardMarkup().add(InlineKeyboardBut
                                                                InlineKeyboardButton('Отмена',
                                                                                     callback_data='cancel'))
 
-
+inline_next_keyboard = InlineKeyboardMarkup().add(InlineKeyboardButton('Продолжить',
+                                                                       callback_data='next'),
+                                                  InlineKeyboardButton('Отмена',
+                                                                       callback_data='cancel'))

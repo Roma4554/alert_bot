@@ -28,7 +28,7 @@ def logging_enable() -> None:
         pth = generate_path_for_log(num=count)
 
     logging.basicConfig(level=logging.INFO,
-                        filename=pth,
+                        # filename=pth,
                         filemode='w',
                         encoding='utf-8',
                         format='%(asctime)s [%(module)s] %(levelname)s %(message)s',

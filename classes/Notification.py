@@ -57,7 +57,7 @@ class Notification:
             raise TypeError("Табельный номер пользователя должно быть целочисленным значением.")
         if employee_id is not None:
             if len(str(employee_id)) != int(config['DEFAULT']['len_employee_id']):
-                raise ValueError(f"Некорректный формат табельного номера")
+                raise ValueError(f"Табельный номер: {config['DEFAULT']['len_employee_id']}-значное целочисленное значение")
 
     @classmethod
     def __verify_date(cls, date: str) -> None:

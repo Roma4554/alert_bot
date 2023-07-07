@@ -27,8 +27,8 @@ async def cancel_call(callback: types.CallbackQuery, state: FSMContext) -> None:
     if cur_state is None:
         return
     await state.finish()
-    await callback.message.reply('Команда отменена')
     await cleaner(callback)
+    await callback.message.answer('Команда отменена!')
     await callback.answer()
 
 
@@ -46,14 +46,8 @@ async def cleaner(call: types.Message | types.CallbackQuery) -> None:
     else:
         raise TypeError('call должен быть Message или CallbackQuery')
 
-    try:
-        if message_id_dict[user_id]:
-            for message_id in message_id_dict[user_id][::-1]:
-                await bot.delete_message(chat_id, message_id)
-
-            message_id_dict[user_id].clear()
-    except KeyError:
-        pass
+    while message_id_dict[user_id]:
+        await bot.delete_message(chat_id, message_id_dict[user_id].pop())
 
 
 # ===========================Создание списков для сохранения id сообщений ======================
@@ -144,7 +138,7 @@ def start_message_generator(name: str, start: bool = True) -> str:
         text_message = '\n'.join([text_message, f'{command} - {description}'])
 
     if start:
-        text_message += '\n\n<b>Для подключения к системе оповещений, пожалуйста, введи свой табельный номер:</b>'
+        text_message += '\n\n<b>Для подключения к системе оповещений, пожалуйста, введи свой <u>табельный номер</u>:</b>'
 
     return text_message
 
@@ -172,9 +166,9 @@ def admin_message_generator() -> str:
 
 
 # ==========================Поиск employee_id по инициалам============================
-async def search_by_initials(message: types.Message) -> int:
+def search_employee_id(message: types.Message) -> None:
     """
-    Асинхронная функция для поиска табельного номера по инициалам пользователя
+    Функция для поиска табельного номера по инициалам пользователя
     """
     if not message.text.isdigit():
 
@@ -188,10 +182,18 @@ async def search_by_initials(message: types.Message) -> int:
                 employee_id = initial_dict[text]
                 break
         else:
-            echo = await message.reply('Данный пользователь отсутствует в базе!')
-            message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
+            raise KeyError('Данный пользователь отсутствует в базе данных!')
+
+    elif len(message.text) != int(config['DEFAULT']['len_employee_id']):
+        raise ValueError(f"Табельный номер: {config['DEFAULT']['len_employee_id']}-значное целочисленное значение")
+
     else:
-        employee_id = message.text
+        text_message = int(message.text)
+        user_list = (user.employee_id for user in db.get_user_list())
+        if text_message in user_list:
+            employee_id = text_message
+        else:
+            raise KeyError('Данный пользователь отсутствует в базе данных!')
 
     return employee_id
 
