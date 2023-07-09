@@ -21,5 +21,6 @@ class FSM_admin(StatesGroup):
 class FSM_user(StatesGroup):
     """Класс состояний для пользователей"""
     get_employee_id_state = State()
+    get_employee_id_from_start_state = State()
     get_admin_state = State()
     get_full_name_state = State()

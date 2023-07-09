@@ -109,9 +109,6 @@ async def set_fire_admin(message: types.Message, state: FSMContext) -> None:
         message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
 
 
-
-
-
 # ==========================Изменение пароля=========================================================
 @check_permission
 async def change_password(message: types.Message, state: FSMContext) -> None:
@@ -175,14 +172,25 @@ async def add_notification(message: types.Message, state: FSMContext) -> None:
     await state.set_state(FSM_admin.add_employee_id_state.state)
 
 
-async def add_employee_id(message: types.Message) -> None:
+async def add_employee_id(message: types.Message, state: FSMContext) -> None:
     """
     Хендлер сохраняющий табельный номер и запрашивающий дату оповещения:
     """
+    if message.text.lower() == 'all':
+        employees_id = db.get_employee_id_dict().keys()
+
+        for employee_id in employees_id:
+            set_notification_in_notification_dict(message, employee_id)
+
+        echo = await message.reply('Для оповещения выбраны все пользователи!\nНажмите кнопку <b>"Продолжить"</b>',
+                                   reply_markup=inline_next_keyboard,
+                                   parse_mode=types.ParseMode.HTML)
+        message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
+        return
+
     try:
         employee_id = search_employee_id(message)
-        notification_dict[message.from_user.id].append(Notification())
-        notification_dict[message.from_user.id][-1].employee_id = int(employee_id)
+        set_notification_in_notification_dict(message, employee_id)
         echo = await message.reply('Добавьте еще пользователя или нажмите кнопку <b>"Продолжить"</b>',
                                    reply_markup=inline_next_keyboard,
                                    parse_mode=types.ParseMode.HTML)
@@ -192,8 +200,12 @@ async def add_employee_id(message: types.Message) -> None:
     finally:
         message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
 
+def set_notification_in_notification_dict(message: types.Message, employee_id: int) -> types.Message:
+    notification = Notification()
+    notification.employee_id = employee_id
+    notification_dict[message.from_user.id].append(notification)
 
-async def next_call(callback: types.CallbackQuery, state: FSMContext) -> None:
+async def continue_call(callback: types.CallbackQuery, state: FSMContext) -> None:
     """
     Хенделер срабатывающий на нажатие инлайн кнопки "Продолжить".
     """
@@ -208,8 +220,8 @@ async def add_date(message: types.Message, state: FSMContext) -> None:
     if search(date_pattern, message.text):
         split_text = message.text.split('.')[::-1]
         date = '.'.join(split_text)
-        for user in notification_dict[message.from_user.id]:
-            user.date = date
+        for note in notification_dict[message.from_user.id]:
+            note.date = date
         await state.set_state(FSM_admin.add_note_state.state)
         echo = await message.reply('📝 Введите текст уведомления:',
                                    reply_markup=inline_cancel_keyboard,
@@ -225,7 +237,7 @@ async def add_text(message: types.Message) -> None:
     for notification in notifications:
         notification.notification = message.text
     text_message = 'Чтобы изменить текст, повторно отправьте сообщение!' \
-                   'Для сохранения конечной версии, нажмите кнопку "Сохранить"\n' \
+                   '\nДля сохранения конечной версии, нажмите кнопку <b>"Сохранить"</b>\n' \
                    '\n<b>Предварительный просмотр:</b>'
     text_message = '\n'.join([text_message, str(notifications[0])])
     message_id_dict[message.from_user.id].append(message.message_id)
@@ -244,12 +256,10 @@ async def save_call(callback: types.CallbackQuery, state: FSMContext) -> None:
     await state.finish()
     notifications = map(tuple, notification_dict[callback.from_user.id])
     db.add_info_to_notification(notifications)
-    text = '\n'.join(['Уведомление сохранено!\n', str(notification_dict[callback.from_user.id][0])])
     await bot.edit_message_text(chat_id=callback.message.chat.id,
                                 message_id=message_id_dict[callback.from_user.id].pop(),
-                                text=text)
-    await callback.message.answer('✔ <b>Уведомления сохранены!</b>', parse_mode=types.ParseMode.HTML)
-
+                                parse_mode=types.ParseMode.HTML,
+                                text='✔ <b>Уведомления сохранены!</b>')
 
 # ==========================Загрузка данных в БД из exel==================================================
 @check_permission
@@ -379,6 +389,6 @@ def register_admin_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(add_employee_id, state=FSM_admin.add_employee_id_state)
     dp.register_message_handler(add_date, state=FSM_admin.add_date_state)
     dp.register_message_handler(add_text, state=FSM_admin.add_note_state)
-    dp.register_callback_query_handler(next_call, Text(equals='next'), state=FSM_admin.add_employee_id_state.state)
+    dp.register_callback_query_handler(continue_call, Text(equals='next'), state=FSM_admin.add_employee_id_state.state)
     dp.register_callback_query_handler(save_call, Text(equals='save'), state=FSM_admin.add_note_state)
     dp.register_message_handler(loop_info, commands=['loop'])

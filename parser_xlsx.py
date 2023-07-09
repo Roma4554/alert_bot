@@ -21,7 +21,7 @@ def write_from_xlsx_to_db(file_name: str) -> str:
     book = load_workbook(filename=pth, data_only=True)
     sheet = book.active
     total_note = 0
-    #FIX
+
     for i_row, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), 2):
         if row.count(None) == 3:
             continue

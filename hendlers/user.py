@@ -5,6 +5,7 @@ from datetime import date
 from aiogram import types
 from sqlite3 import IntegrityError
 from aiogram.dispatcher import FSMContext, Dispatcher
+from aiogram.types import Message
 
 import db
 from create_bot import bot
@@ -15,7 +16,6 @@ from hendlers.box import start_message_generator, admin_message_generator
 from hendlers.box import cleaner, send_notifications
 
 
-from_start = False
 # ==========================Старт==================================================
 async def start(message: types.Message, state: FSMContext) -> None:
     """
@@ -27,16 +27,12 @@ async def start(message: types.Message, state: FSMContext) -> None:
         message_id_dict[message.from_user.id] = list()
     except IntegrityError:
         logging.error(f'Пользователь {message.from_user.full_name} уже есть в базе данных')
-        return
+        # return
     finally:
         await message.answer(start_message_generator(message.from_user.first_name),
                              parse_mode=types.ParseMode.HTML)
 
-    await state.set_state(FSM_user.get_employee_id_state.state)
-
-    global from_start
-    from_start = True
-
+    await state.set_state(FSM_user.get_employee_id_from_start_state.state)
 
 # ==========================Хелп==================================================
 async def help_user(message: types.Message) -> None:
@@ -75,11 +71,10 @@ async def set_employee_id(message: types.Message, state: FSMContext) -> None:
         message_id_dict[message.from_user.id].append(message.message_id)
         await cleaner(message)
 
-        global from_start
-        if from_start:
-            from_start = False
+        current_state = await state.get_state()
+        if current_state == 'FSM_user:get_employee_id_from_start_state':
             await asyncio.sleep(0.5)
-            echo = await message.answer(f'🖊 Введите ФИО через пробел:')
+            echo: Message = await message.answer(f'🖊 Введите ФИО через пробел:')
             message_id_dict[message.from_user.id].append(echo.message_id)
             await state.set_state(FSM_user.get_full_name_state.state)
         else:
@@ -161,6 +156,7 @@ def register_user_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(start, commands=['start'])
     dp.register_message_handler(help_user, commands=['help'])
     dp.register_message_handler(get_employee_id, commands=['change_id'])
+    dp.register_message_handler(set_employee_id, state=FSM_user.get_employee_id_from_start_state)
     dp.register_message_handler(set_employee_id, state=FSM_user.get_employee_id_state)
     dp.register_message_handler(get_full_name, commands=['change_name'])
     dp.register_message_handler(set_full_name, state=FSM_user.get_full_name_state)

@@ -67,7 +67,7 @@ async def send_notifications(current_date: datetime.date, user_id: int, employee
     pattern_message = '▫[{data}]: {text}'
     notifications = db.get_notifications(current_date.strftime("%Y.%m.%d"), employee_id)
     if notifications:
-        text_message = ('❗<b>Внимание</b>❗').center(39, '=')
+        text_message = '❗<b>Внимание</b>❗'
         for notification in notifications:
             time_delta = notification.date_to_datetime() - current_date
             if time_delta.days in range(int(config['DEFAULT']['delta_days']) + 1):
