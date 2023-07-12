@@ -1,0 +1,7 @@
+/.idea/
+/venv/
+/.env
+/.venv
+/test.py
+/*.db
+/*.log
