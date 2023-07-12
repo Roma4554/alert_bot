@@ -1,13 +1,10 @@
-import logging
 import os.path as path
 from os import remove
-from datetime import time, date, timedelta, datetime
 from re import search
 
 from aiogram import types
 from asyncio import sleep
 from asyncio import all_tasks, create_task
-import asyncio
 from aiogram.types import InputFile
 from aiogram.dispatcher import FSMContext
 from aiogram import Dispatcher
@@ -15,13 +12,14 @@ from aiogram.dispatcher.filters import Text
 
 import db
 from create_bot import bot
-from decorators import check_permission, log
+from decorators import check_permission
 from keyboards import inline_cancel_keyboard, inline_save_notification_keyboard, inline_next_keyboard
 from parser_xlsx import write_from_xlsx_to_db, write_from_db_to_xlsx
-from classes import Notification, FSM_admin
-from hendlers.box import config, message_id_dict, notification_dict
-from hendlers.box import admin_message_generator
-from hendlers.box import auto_alert, cleaner, try_send_message, search_employee_id
+from classes import Notification, FsmAdmin
+from hendlers.other import config, message_id_dict, notification_dict
+from hendlers.other import admin_message_generator
+from hendlers.other import auto_alert, cleaner, search_employee_id
+
 
 time_pattern = r'([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
 date_pattern = r'^(?:0[1-9]|[12]\d|3[01])\.(?:0[1-9]|1[012])\.(?:[12]\d{3})$'
@@ -43,7 +41,7 @@ async def help_admin(message: types.Message) -> None:
 async def change_notification_time(message: types.Message, state: FSMContext) -> None:
     await message.answer('⏰ Введите время оповещения в формате ЧЧ:ММ или ЧЧ:ММ:CC.',
                          reply_markup=inline_cancel_keyboard)
-    await state.set_state(FSM_admin.get_new_notification_time.state)
+    await state.set_state(FsmAdmin.get_new_notification_time.state)
 
 
 async def set_notification_time(message: types.Message, state: FSMContext) -> None:
@@ -81,10 +79,11 @@ async def fire_admin(message: types.Message, state: FSMContext) -> None:
     Хендлер позволяющий забрать права администратора у пользователя
     """
     await message.answer(
-        'Введите <b>табельный номер</b> или <b>инициалы</b> пользователя, у которого необходимо забрать права администратора!',
+        'Введите <b>табельный номер</b> или <b>инициалы</b> пользователя, у которого '
+        'необходимо забрать права администратора!',
         reply_markup=inline_cancel_keyboard,
         parse_mode=types.ParseMode.HTML)
-    await state.set_state(FSM_admin.fire_admin_state.state)
+    await state.set_state(FsmAdmin.fire_admin_state.state)
 
 
 async def set_fire_admin(message: types.Message, state: FSMContext) -> None:
@@ -120,7 +119,7 @@ async def change_password(message: types.Message, state: FSMContext) -> None:
                          reply_markup=inline_cancel_keyboard,
                          parse_mode=types.ParseMode.HTML)
 
-    await state.set_state(FSM_admin.change_password_state.state)
+    await state.set_state(FsmAdmin.change_password_state.state)
 
 
 async def set_new_password(message: types.Message, state: FSMContext) -> None:
@@ -169,7 +168,7 @@ async def add_notification(message: types.Message, state: FSMContext) -> None:
                         parse_mode=types.ParseMode.HTML)
 
     notification_dict[message.from_user.id] = list()
-    await state.set_state(FSM_admin.add_employee_id_state.state)
+    await state.set_state(FsmAdmin.add_employee_id_state.state)
 
 
 async def add_employee_id(message: types.Message, state: FSMContext) -> None:
@@ -186,6 +185,7 @@ async def add_employee_id(message: types.Message, state: FSMContext) -> None:
                                    reply_markup=inline_next_keyboard,
                                    parse_mode=types.ParseMode.HTML)
         message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
+        await state.finish()
         return
 
     try:
@@ -200,16 +200,21 @@ async def add_employee_id(message: types.Message, state: FSMContext) -> None:
     finally:
         message_id_dict[message.from_user.id].extend([message.message_id, echo.message_id])
 
-def set_notification_in_notification_dict(message: types.Message, employee_id: int) -> types.Message:
+
+def set_notification_in_notification_dict(message: types.Message, employee_id: int) -> None:
     notification = Notification()
     notification.employee_id = employee_id
     notification_dict[message.from_user.id].append(notification)
+
 
 async def continue_call(callback: types.CallbackQuery, state: FSMContext) -> None:
     """
     Хенделер срабатывающий на нажатие инлайн кнопки "Продолжить".
     """
-    await state.set_state(FSM_admin.add_date_state.state)
+    if notification_dict.get(callback.from_user.id) is None:
+        return
+
+    await state.set_state(FsmAdmin.add_date_state.state)
     echo = await callback.message.reply('📅 Введите дату в формате ДД.ММ.ГГГГ:',
                                         reply_markup=inline_cancel_keyboard,
                                         parse_mode=types.ParseMode.HTML)
@@ -217,12 +222,15 @@ async def continue_call(callback: types.CallbackQuery, state: FSMContext) -> Non
 
 
 async def add_date(message: types.Message, state: FSMContext) -> None:
+    """
+    Хенделер сохраняющий дату и запрашивающий текст уведомления.
+    """
     if search(date_pattern, message.text):
         split_text = message.text.split('.')[::-1]
         date = '.'.join(split_text)
         for note in notification_dict[message.from_user.id]:
             note.date = date
-        await state.set_state(FSM_admin.add_note_state.state)
+        await state.set_state(FsmAdmin.add_note_state.state)
         echo = await message.reply('📝 Введите текст уведомления:',
                                    reply_markup=inline_cancel_keyboard,
                                    parse_mode=types.ParseMode.HTML)
@@ -233,9 +241,12 @@ async def add_date(message: types.Message, state: FSMContext) -> None:
 
 
 async def add_text(message: types.Message) -> None:
+    """
+    Хенделер для предварительного просмотра сообщения и его изменение
+    """
     notifications = notification_dict[message.from_user.id]
     for notification in notifications:
-        notification.notification = message.text
+        notification.notification = message.html_text
     text_message = 'Чтобы изменить текст, повторно отправьте сообщение!' \
                    '\nДля сохранения конечной версии, нажмите кнопку <b>"Сохранить"</b>\n' \
                    '\n<b>Предварительный просмотр:</b>'
@@ -261,6 +272,7 @@ async def save_call(callback: types.CallbackQuery, state: FSMContext) -> None:
                                 parse_mode=types.ParseMode.HTML,
                                 text='✔ <b>Уведомления сохранены!</b>')
 
+
 # ==========================Загрузка данных в БД из exel==================================================
 @check_permission
 async def set_file(message: types.Message, state: FSMContext) -> None:
@@ -268,7 +280,7 @@ async def set_file(message: types.Message, state: FSMContext) -> None:
     Хендлер для запроса файла exel у пользователя
     """
     await message.reply('Прикрепите exel файл\n(не более 20 Мб!)', reply_markup=inline_cancel_keyboard)
-    await state.set_state(FSM_admin.get_file_state.state)
+    await state.set_state(FsmAdmin.get_file_state.state)
 
 
 async def save_file(message: types.Message, state: FSMContext) -> None:
@@ -287,6 +299,7 @@ async def save_file(message: types.Message, state: FSMContext) -> None:
         match message.caption:
             case str(message.caption) if message.caption.lower() == '*d':
                 db.clean_table()
+                await message.answer('База данных успешно отчищена!')
         status = write_from_xlsx_to_db(message.document.file_name)
         await message.reply(status)
         await cleaner(message)
@@ -319,76 +332,24 @@ async def get_file(message: types.Message) -> None:
         remove(pth)
 
 
-# ==========================Оповещение всех пользователей в назначенное время=======================
-async def all(message: types.Message, state: FSMContext) -> None:
-    """
-    Хендлер для добавления оповещения всех пользователей
-    """
-    await message.reply('Введите текст оповещения:', reply_markup=inline_cancel_keyboard)
-
-    await state.set_state(FSM_admin.add_notification_stated.state)
-
-
-async def get_time(message: types.Message, state: FSMContext) -> None:
-    """
-    Хендлер для добавления времени оповещения
-    """
-    notification_dict[message.from_user.id] = message.text
-    await message.answer('Введите время оповещения в формате ЧЧ:ММ:CC или ЧЧ:ММ.',
-                         reply_markup=inline_cancel_keyboard)
-    await state.set_state(FSM_admin.add_time_state.state)
-
-
-async def send_notification(message: types.Message, state: FSMContext) -> None:
-    if search(time_pattern, message.text):
-
-        time_notification = message.text
-        current_date = date.today()
-        current_datetime = datetime.now()
-        time_notification = time.fromisoformat(time_notification)
-        notification_datetime = datetime.combine(current_date, time_notification)
-
-        if notification_datetime > current_datetime:
-            notification_datetime += timedelta(days=1)
-
-        delta_time = notification_datetime - current_datetime
-
-        logging.info(f'Следующее оповещение через {int(delta_time.seconds / 60)} мин.')
-
-        await sleep(delta_time.seconds)
-
-        for user in db.get_user_list():
-            await try_send_message(user.user_id, notification_dict[message.from_user.id])
-
-
-# =========================================================================================
-async def loop_info(message: types.Message) -> None:
-    print("Выполняем loop")
-    tasks = asyncio.all_tasks()
-    for task in tasks:
-        print(task)
-    print('Текущая задача:', asyncio.current_task().get_name())
-
-
 # ================================================================================================
 def register_admin_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(help_admin, commands=['help_admin'])
     dp.register_message_handler(change_notification_time, commands=['change_time'])
-    dp.register_message_handler(set_notification_time, state=FSM_admin.get_new_notification_time)
+    dp.register_message_handler(set_notification_time, state=FsmAdmin.get_new_notification_time)
     dp.register_message_handler(fire_admin, commands=['fire_admin'])
-    dp.register_message_handler(set_fire_admin, state=FSM_admin.fire_admin_state)
+    dp.register_message_handler(set_fire_admin, state=FsmAdmin.fire_admin_state)
     dp.register_message_handler(change_password, commands=['change_password'])
-    dp.register_message_handler(set_new_password, state=FSM_admin.change_password_state)
+    dp.register_message_handler(set_new_password, state=FsmAdmin.change_password_state)
     dp.register_message_handler(get_admin_list, commands=['admin_list'])
     dp.register_message_handler(set_file, commands=['add_db'])
-    dp.register_message_handler(save_file, state=FSM_admin.get_file_state, content_types=['document'])
-    dp.register_message_handler(if_not_document, state=FSM_admin.get_file_state,
+    dp.register_message_handler(save_file, state=FsmAdmin.get_file_state, content_types=['document'])
+    dp.register_message_handler(if_not_document, state=FsmAdmin.get_file_state,
                                 content_types=['text', 'photo', 'sticker', 'video'])
     dp.register_message_handler(get_file, commands=['get_db'])
     dp.register_message_handler(add_notification, commands=['add_note'])
-    dp.register_message_handler(add_employee_id, state=FSM_admin.add_employee_id_state)
-    dp.register_message_handler(add_date, state=FSM_admin.add_date_state)
-    dp.register_message_handler(add_text, state=FSM_admin.add_note_state)
-    dp.register_callback_query_handler(continue_call, Text(equals='next'), state=FSM_admin.add_employee_id_state.state)
-    dp.register_callback_query_handler(save_call, Text(equals='save'), state=FSM_admin.add_note_state)
-    dp.register_message_handler(loop_info, commands=['loop'])
+    dp.register_message_handler(add_employee_id, state=FsmAdmin.add_employee_id_state)
+    dp.register_message_handler(add_date, state=FsmAdmin.add_date_state)
+    dp.register_message_handler(add_text, state=FsmAdmin.add_note_state)
+    dp.register_callback_query_handler(continue_call, Text(equals='continue'), state='*')
+    dp.register_callback_query_handler(save_call, Text(equals='save'), state=FsmAdmin.add_note_state)

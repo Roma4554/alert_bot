@@ -28,9 +28,10 @@ class User:
     def get_initials(self) -> str:
         split_name = self.name.split()
         return ' '.join([split_name[0], '.'.join([split_name[1][0], split_name[2][0]])])
+
     @classmethod
-    def __verify_id(cls, id: int) -> None:
-        if not isinstance(id, int):
+    def __verify_id(cls, user_id: int) -> None:
+        if not isinstance(user_id, int):
             raise TypeError("id пользователя должно быть целочисленным значением.")
 
     @classmethod
@@ -44,8 +45,6 @@ class User:
     def __verify_employee_id(cls, employee_id: int) -> None:
         if not isinstance(employee_id, int):
             raise TypeError("Табельный номер пользователя должно быть целочисленным значением.")
-
-
 
     @classmethod
     def __verify_is_admin(cls, is_admin: bool) -> None:

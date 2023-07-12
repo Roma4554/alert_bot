@@ -11,10 +11,13 @@ from db import sql_start, close_base
 from create_bot import dp, bot
 from hendlers.user import register_user_handlers
 from hendlers.admin import register_admin_handlers
-from hendlers.box import register_handlers, create_message_id_list, auto_alert
+from hendlers.other import register_handlers, create_message_id_list, auto_alert
 
 
 def logging_enable() -> None:
+    """
+    Функция включения логирования
+    """
     def generate_path_for_log(num: int) -> str:
         today = date.today().isoformat()
         file_name = f'{today}-{num}.log'

@@ -1,7 +1,7 @@
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
 
-class FSM_admin(StatesGroup):
+class FsmAdmin(StatesGroup):
     """Класс состояний для команд администратора"""
     get_new_notification_time = State()
 
@@ -15,10 +15,8 @@ class FSM_admin(StatesGroup):
     add_date_state = State()
     add_note_state = State()
 
-    add_notification_state = State()
-    add_time_state = State()
 
-class FSM_user(StatesGroup):
+class FsmUser(StatesGroup):
     """Класс состояний для пользователей"""
     get_employee_id_state = State()
     get_employee_id_from_start_state = State()

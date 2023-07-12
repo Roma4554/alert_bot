@@ -6,7 +6,7 @@ from aiogram import types
 from asyncio import sleep, current_task
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher import FSMContext, Dispatcher
-from aiogram.utils.exceptions import BotBlocked
+from aiogram.utils.exceptions import BotBlocked, MessageIsTooLong
 from datetime import time, date, timedelta, datetime
 
 import db
@@ -75,8 +75,6 @@ async def send_notifications(current_date: datetime.date, user_id: int, employee
                                                                                text=notification.notification)])
         await try_send_message(user_id, text_message)
         return True
-    else:
-        return False
 
 
 async def try_send_message(user_id: int, text_message: str) -> None:
@@ -87,6 +85,8 @@ async def try_send_message(user_id: int, text_message: str) -> None:
         await bot.send_message(user_id, text_message, parse_mode=types.ParseMode.HTML)
     except BotBlocked as ex:
         logging.error(f'{ex}. User id: {user_id}')
+    except MessageIsTooLong as ex:
+        logging.error(f'{ex}')
 
 
 async def auto_alert() -> None:
@@ -131,14 +131,15 @@ def start_message_generator(name: str, start: bool = True) -> str:
     }
 
     text_message = f'Привет, {name} 👋!\
-                    \nЯ бот который будет напоминать тебе о сдаче необходимых экзаменов!\n\
+                    \nЯ бот который будет напоминать тебе о запланированных задачах!\n\
                     \n⚙ Ты можешь управлять мной с помощью следующих команд:\n'
 
     for command, description in helper_user_message.items():
         text_message = '\n'.join([text_message, f'{command} - {description}'])
 
     if start:
-        text_message += '\n\n<b>Для подключения к системе оповещений, пожалуйста, введи свой <u>табельный номер</u>:</b>'
+        text_message += '\n\n<b>Для подключения к системе оповещений, пожалуйста, введи свой <u>табельный ' \
+                        'номер</u>:</b> '
 
     return text_message
 
@@ -165,8 +166,8 @@ def admin_message_generator() -> str:
     return text_message
 
 
-# ==========================Поиск employee_id по инициалам============================
-def search_employee_id(message: types.Message) -> None:
+# ==========================Поиск employee_id ============================
+def search_employee_id(message: types.Message) -> int:
     """
     Функция для поиска табельного номера по инициалам пользователя
     """

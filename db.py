@@ -62,6 +62,7 @@ def add_info_to_notification(value: list[tuple[int, str, str]]) -> None:
     """
     cur.executemany('INSERT INTO table_notification VALUES(?, ?, ?)', value)
     base.commit()
+    logging.info('Данные успешно добавлены в БД!')
 
 
 def add_admin(user_id: int) -> None:
@@ -139,6 +140,7 @@ def clean_table() -> None:
     """
     cur.execute('DELETE FROM table_notification')
     base.commit()
+    logging.info('Все оповещения в базе данных удалены')
 
 
 def close_base() -> None:

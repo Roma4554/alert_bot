@@ -10,10 +10,10 @@ from aiogram.types import Message
 import db
 from create_bot import bot
 from keyboards import inline_cancel_keyboard
-from classes import FSM_user
-from hendlers.box import config, message_id_dict
-from hendlers.box import start_message_generator, admin_message_generator
-from hendlers.box import cleaner, send_notifications
+from classes import FsmUser
+from hendlers.other import config, message_id_dict
+from hendlers.other import start_message_generator, admin_message_generator
+from hendlers.other import cleaner, send_notifications
 
 
 # ==========================Старт==================================================
@@ -25,14 +25,25 @@ async def start(message: types.Message, state: FSMContext) -> None:
         db.add_user(message)
         logging.info(f'Пользователь {message.from_user.full_name} успешно добавлен в базу данных')
         message_id_dict[message.from_user.id] = list()
-    except IntegrityError:
-        logging.error(f'Пользователь {message.from_user.full_name} уже есть в базе данных')
-        # return
-    finally:
         await message.answer(start_message_generator(message.from_user.first_name),
                              parse_mode=types.ParseMode.HTML)
+    except IntegrityError:
+        user = db.get_user_by_id(message.from_user.id)
+        if user.employee_id != 0:
+            if len(user.name.split()) == 3:
+                await message.answer('Вы уже зарегистрированы!')
+                logging.debug(f'Пользователь {message.from_user.full_name} уже есть в базе данных')
+            else:
+                await message.answer('В базе отсутствует Ваше ФИО.'
+                                     '\nПожалуйста, введите ФИО через пробел:')
+                await state.set_state(FsmUser.get_full_name_state.state)
+            return
+        else:
+            await message.answer(start_message_generator(message.from_user.first_name),
+                                 parse_mode=types.ParseMode.HTML)
 
-    await state.set_state(FSM_user.get_employee_id_from_start_state.state)
+    await state.set_state(FsmUser.get_employee_id_from_start_state.state)
+
 
 # ==========================Хелп==================================================
 async def help_user(message: types.Message) -> None:
@@ -49,7 +60,7 @@ async def get_employee_id(message: types.Message, state: FSMContext) -> None:
     Хендлер для замены табельного номера
     """
     await message.answer('🖊 Введите табельный номер:', reply_markup=inline_cancel_keyboard)
-    await state.set_state(FSM_user.get_employee_id_state.state)
+    await state.set_state(FsmUser.get_employee_id_state.state)
 
 
 async def set_employee_id(message: types.Message, state: FSMContext) -> None:
@@ -72,11 +83,11 @@ async def set_employee_id(message: types.Message, state: FSMContext) -> None:
         await cleaner(message)
 
         current_state = await state.get_state()
-        if current_state == 'FSM_user:get_employee_id_from_start_state':
+        if current_state == 'FsmUser:get_employee_id_from_start_state':
             await asyncio.sleep(0.5)
             echo: Message = await message.answer(f'🖊 Введите ФИО через пробел:')
             message_id_dict[message.from_user.id].append(echo.message_id)
-            await state.set_state(FSM_user.get_full_name_state.state)
+            await state.set_state(FsmUser.get_full_name_state.state)
         else:
             await state.finish()
 
@@ -91,7 +102,7 @@ async def get_full_name(message: types.Message, state: FSMContext) -> None:
     Хендлер для замены ФИО
     """
     await message.answer('🖊 Введите ФИО через пробел:', reply_markup=inline_cancel_keyboard)
-    await state.set_state(FSM_user.get_full_name_state.state)
+    await state.set_state(FsmUser.get_full_name_state.state)
 
 
 async def set_full_name(message: types.Message, state: FSMContext) -> None:
@@ -119,7 +130,7 @@ async def get_admin(message: types.Message, state: FSMContext) -> None:
     """
     await message.answer('🔐 Для получения статуса администратора, пожалуйста, введите пароль:',
                          reply_markup=inline_cancel_keyboard)
-    await state.set_state(FSM_user.get_admin_state.state)
+    await state.set_state(FsmUser.get_admin_state.state)
 
 
 async def set_admin(message: types.Message, state: FSMContext) -> None:
@@ -156,10 +167,10 @@ def register_user_handlers(dp: Dispatcher) -> None:
     dp.register_message_handler(start, commands=['start'])
     dp.register_message_handler(help_user, commands=['help'])
     dp.register_message_handler(get_employee_id, commands=['change_id'])
-    dp.register_message_handler(set_employee_id, state=FSM_user.get_employee_id_from_start_state)
-    dp.register_message_handler(set_employee_id, state=FSM_user.get_employee_id_state)
+    dp.register_message_handler(set_employee_id, state=FsmUser.get_employee_id_from_start_state)
+    dp.register_message_handler(set_employee_id, state=FsmUser.get_employee_id_state)
     dp.register_message_handler(get_full_name, commands=['change_name'])
-    dp.register_message_handler(set_full_name, state=FSM_user.get_full_name_state)
+    dp.register_message_handler(set_full_name, state=FsmUser.get_full_name_state)
     dp.register_message_handler(get_admin, commands=['get_admin'])
-    dp.register_message_handler(set_admin, state=FSM_user.get_admin_state)
+    dp.register_message_handler(set_admin, state=FsmUser.get_admin_state)
     dp.register_message_handler(notification, commands=['notifications'])

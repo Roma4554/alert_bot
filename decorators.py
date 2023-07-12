@@ -17,7 +17,7 @@ def check_permission(func: Callable) -> Callable:
                 return await func(message, *args, **kwargs)
             else:
                 raise PermissionError(
-                    f'У пользователя {message.from_user.full_name} недостаточно прав для выполнения функции {func.__name__}')
+                    f"У пользователя {message.from_user.full_name} недостаточно прав для выполнения функции {func.__name__}")
         except PermissionError as exp:
             await bot.send_message(message.from_user.id, 'У Вас недостаточно прав для выполнения команды!')
             logging.error('{exp_name}: {exp_str}'.format(exp_name='PermissionError',
