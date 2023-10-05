@@ -5,7 +5,8 @@ from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, Border, Side, Alignment
 from datetime import datetime
 
-from classes.Notification import Notification
+
+from classes import Notification
 from db import add_info_to_notification, get_notifications_generator
 
 
@@ -16,7 +17,7 @@ def write_from_xlsx_to_db(file_name: str) -> str:
     """
     notifications_list = list()
 
-    pth = path.join(path.curdir, 'documents', file_name)
+    pth = path.join(path.curdir, file_name)
 
     book = load_workbook(filename=pth, data_only=True)
     sheet = book.active
@@ -81,11 +82,16 @@ def write_from_db_to_xlsx() -> None:
             cell.value = value
             cell.font = Font(name='Times New Roman', size=11)
             cell.border = Border(left=cell_border, right=cell_border, top=cell_border, bottom=cell_border)
-            if cell.column in (1, 2):
-                cell.alignment = Alignment(horizontal='center')
-            else:
+
+            if cell.column == 3:
                 cell.alignment = Alignment(horizontal='left', wrapText=True)
+                cell.number_format = '@'
+            else:
+                cell.alignment = Alignment(horizontal='center')
+                if cell.column == 1:
+                    cell.number_format = '@'
+
         i_row += 1
 
-    pth = path.join(path.curdir, 'documents', 'DataBase.xlsx')
+    pth = path.join(path.curdir, 'DataBase.xlsx')
     book.save(pth)

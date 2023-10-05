@@ -1,7 +1,8 @@
 /.idea/
 /venv/
+/database/
+/data/
 /.env
 /.venv
 /test.py
-/*.db
 /*.log

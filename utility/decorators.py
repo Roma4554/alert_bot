@@ -9,6 +9,7 @@ import db
 from create_bot import bot
 
 
+
 def check_permission(func: Callable) -> Callable:
     @functools.wraps(func)
     async def wrapped(message: types.Message, *args, **kwargs):

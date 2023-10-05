@@ -1,19 +1,24 @@
 from sqlite3 import connect
 import logging
+from os import path, mkdir
 
 from aiogram import types
 
 from classes.User import User
 from classes.Notification import Notification
 
+if not path.exists('data'):
+    mkdir('data')
+
+pth = path.join('data', 'data_base.db')
+base = connect(pth)
+cur = base.cursor()
+
 
 def sql_start() -> None:
     """"
     Функция для подключения к базе данных
     """
-    global base, cur
-    base = connect('data_base.db')
-    cur = base.cursor()
     if base:
         logging.info('База данных успешно подключена')
 
