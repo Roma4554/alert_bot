@@ -1,5 +1,6 @@
 from aiogram import types
 from aiogram.dispatcher import FSMContext
+from logging import info
 
 import db
 from utility.decorators import check_permission
@@ -28,11 +29,13 @@ async def set_fire_admin(message: types.Message, state: FSMContext) -> None:
     """
     try:
         employee_id = search_employee_id(message)
+        user = db.get_user_by_employee_id(employee_id)
 
-        if db.get_user_by_employee_id(employee_id).is_admin:
+        if user.is_admin:
             db.fire_admin(employee_id)
             await message.answer('✔ Права администратора отозваны!',
                                  parse_mode=types.ParseMode.HTML)
+            info(f"Пользователь {db.get_user_by_id(message.from_user.id).get_initials()} отозвал право администрирования у {user.get_initials()}")
         else:
             await message.reply('Пользователь не является администратором!')
 

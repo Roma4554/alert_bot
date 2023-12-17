@@ -10,8 +10,7 @@ from keyboards import inline_cancel_keyboard
 from classes import FsmAdmin
 from utility.cleaner import config, message_id_dict
 from utility import auto_alert, cleaner
-
-time_pattern = r'([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
+from utility.patterns_for_re import time_pattern
 
 
 @check_permission

@@ -9,13 +9,8 @@ from utility.decorators import check_permission
 from classes import FsmAdmin, Notification
 from utility.cleaner import cleaner, message_id_dict, notification_dict
 from utility import search_employee_id
+from utility.patterns_for_re import date_pattern
 from keyboards import inline_cancel_keyboard, inline_save_notification_keyboard, inline_next_keyboard
-
-
-time_pattern = r'([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$'
-date_pattern = r'^(?:0[1-9]|[12]\d|3[01])\.(?:0[1-9]|1[012])\.(?:[12]\d{3})$'
-password_pattern = r'^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?!.*[\s#`~"\'\.\+\-\\\/\*$%№@;:^&\*\=]).*$'
-
 
 @check_permission
 async def add_notification(message: types.Message, state: FSMContext) -> None:

@@ -1,16 +1,15 @@
 from re import search
+from logging import info
 
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 
-
+import db
 from keyboards import inline_cancel_keyboard
 from utility.decorators import check_permission
 from classes import FsmAdmin
 from utility.cleaner import config, message_id_dict, cleaner
-
-
-password_pattern = r'^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?!.*[\s#`~"\'\.\+\-\\\/\*$%№@;:^&\*\=]).*$'
+from utility.patterns_for_re import password_pattern
 
 
 @check_permission
@@ -34,6 +33,7 @@ async def set_new_password(message: types.Message, state: FSMContext) -> None:
     if search(password_pattern, message.text):
         config['topsecret']['admin_password'] = message.text
         config.write()
+        info(f"Пользователь {db.get_user_by_id(message.from_user.id).get_initials()} изменил пароль")
         await message.answer('✔ Пароль успешно изменен!',
                              parse_mode=types.ParseMode.HTML)
         message_id_dict[message.from_user.id].append(message.message_id)

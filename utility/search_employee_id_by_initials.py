@@ -3,13 +3,13 @@ from re import search
 
 import db
 from utility.cleaner import config
+from patterns_for_re import initial_pattern
 
 
 def search_employee_id(message: types.Message) -> str:
     """
     Функция для поиска табельного номера по инициалам пользователя
     """
-    initial_pattern = r'^[А-Яа-я][а-я]+\s[А-Яа-я].\s?[А-Яа-я]\.?$'
     if not message.text.isdigit():
         if not search(initial_pattern, message.text):
             raise ValueError('Введите данные в формате Фамилия И.О.')
