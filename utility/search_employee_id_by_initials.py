@@ -3,7 +3,7 @@ from re import search
 
 import db
 from utility.cleaner import config
-from patterns_for_re import initial_pattern
+from utility.patterns_for_re import initial_pattern
 
 
 def search_employee_id(message: types.Message) -> str:
